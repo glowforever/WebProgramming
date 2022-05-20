@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Gamedev Canvas Workshop</title>
+    <style>
+    	* { padding: 0; margin: 0; }
+    	canvas { background: #eee; display: block; margin: 0 auto; }
+    </style>
+</head>
+<body>
+
+<canvas id="myCanvas" width="960" height="640"></canvas>
+
+<script>
+  //이미지
+    
+    var canvas = document.getElementById("myCanvas");
+    var ctx = canvas.getContext("2d");
+
+    //공 크기
+    var ballRadius = 25;
+    
+    //공 위치
+    var x = canvas.width/2; 
+    var y = canvas.height-30;
+
+    //공 속도
+    var dx = 4;
+    var dy = -4;
+
+    //밑에 패들 크기
+    var paddleHeight = 10;
+    var paddleWidth = 75;
+
+    //패들 x좌표
+    var paddleX = (canvas.width-paddleWidth)/2;
+    var rightPressed = false;
+    var leftPressed = false;
+
+    // 벽돌 개수,크기
+    var brickRowCount = 8;
+    var brickColumnCount = 3;
+    var brickWidth = 113;
+    var brickHeight = 60;
+    //벽돌 간격들
+    var brickPadding = 5;
+    var brickOffsetTop = 10;
+    var brickOffsetLeft = 10;
+
+    //목슴, 점수
+    var score = 0;
+    var lives = 300;
+
+    var item_dy=4; //아이템 떨어지는 속도
+    var damage=3; //물풍선 데미지
+    var damage_range=1; //물줄기 범위
+    var level=1;
+    var character=1;
+
+
+    //벽돌 status에 1~4사이 벽돌 강도 조절, item에 랜덤 1~3가지 아이템 배정
+    var bricks = [];
+    for(var c=0; c<brickColumnCount; c++) {
+      bricks[c] = [];
+      for(var r=0; r<brickRowCount; r++) {
+        bricks[c][r] = { x: 0, y: 0, status: Math.floor(Math.random() * 4) + 1, item: Math.floor(Math.random() * 3) + 1};x
+      }
+    }
+
+    //물풍선 퍼지는 것 저장 배열 status>0이면 폭발출력
+    var explosion = [];
+    for(var c=0; c<brickColumnCount; c++) {
+      explosion[c] = [];
+      for(var r=0; r<brickRowCount; r++) {
+        explosion[c][r] = { x: 0, y: 0,status:0};
+      }
+    }
+
+    //아이템 저장 배열
+    // (핑크색,데미지증가) (보라색,물풍선 범위) (오랜지,공속도저하)
+    var items=[];
+    for(var c=0; c<brickColumnCount; c++) {
+      items[c] = [];
+      for(var r=0; r<brickRowCount; r++) {
+        items[c][r] = { x: 0, y: 0, item:0};
+      }
+    }
+    //아이템 이미지 배열
+    var item_imgs=[];
+    for(var i=0;i<5;i++){
+      item_imgs[i]=new Image();
+      item_imgs[i].src="./img/item/"+(i+1)+".png";
+    }
+    //공이미지 배열
+     ball_imgs=[];
+    for(var i=0;i<4;i++){
+      ball_imgs[i]=new Image();
+      ball_imgs[i].src="./img/ball/ball"+(i+1)+".png";
+    }
+    //캐릭터 이미지배열
+     character_imgs=[];
+    for(var i=0;i<3;i++){
+      character_imgs[i]=new Image();
+      character_imgs[i].src="./img/character/character"+(i+1)+".png";
+    }
+    //벽돌 이미지 배열
+    var brick_imgs=[];
+    for(var i=0;i<3;i++){
+      brick_imgs[i]=[];
+      for(var r=0;r<4;r++){
+        brick_imgs[i][r]=new Image();
+        brick_imgs[i][r].src="./img/s"+(i+1)+"/s"+(i+1)+"Block"+(r+1)+".png";
+      }
+    }
+    //배경이미지배열
+     var background_imgs=[];
+
+
+    for(var i=0;i<3;i++){
+      background_imgs[i]="./img/s"+(i+1)+"/s"+(i+1)+".png";
+    }
+    const background=new Image(); 
+    //폭팔 이미지 객체
+    var explosion_img=new Image();
+     explosion_img.src="./img/explosion.png"
+    //키보드 방향키 움직임
+    document.addEventListener("keydown", keyDownHandler, false);
+    document.addEventListener("keyup", keyUpHandler, false);
+    document.addEventListener("mousemove", mouseMoveHandler, false);
+    function keyDownHandler(e) {
+        if(e.key == "Right" || e.key == "ArrowRight") {
+            rightPressed = true;
+        }
+        else if(e.key == "Left" || e.key == "ArrowLeft") {
+            leftPressed = true;
+        }
+    }
+
+    function keyUpHandler(e) {
+        if(e.key == "Right" || e.key == "ArrowRight") {
+            rightPressed = false;
+        }
+        else if(e.key == "Left" || e.key == "ArrowLeft") {
+            leftPressed = false;
+        }
+    }
+
+    //마우스 방향 움직임
+    function mouseMoveHandler(e) {
+      var relativeX = e.clientX - canvas.offsetLeft;
+      if(relativeX > 0 && relativeX < canvas.width) {
+        paddleX = relativeX - paddleWidth/2;
+      }
+    }
+
+    //아이템 충돌 확인 함수 데미지 최대값 2 물풍선 최대범위 3 최소 속도 2로 설정
+    function Item_collisionDetection() {
+        for(var c=0; c<brickColumnCount; c++) {
+                for(var r=0; r<brickRowCount; r++) {
+                  if(items[c][r].item>0){
+                    if(items[c][r].y+item_dy>canvas.height-paddleHeight){
+                      if(items[c][r].x > paddleX && items[c][r].x < paddleX + paddleWidth) {
+                          if(items[c][r].item==1){
+                            //물풍선 데미지 증가
+                            console.log(1);
+                            if(damage<3){
+                              damage++;
+                            }
+                            items[c][r].item=0;
+                          }
+                          if(items[c][r].item==2){
+                            //물풍선 범위 증가
+                            console.log(2);
+                             if(damage_range<=3){
+                              damage_range++;
+                             }
+                             items[c][r].item=0;
+                          }
+                          if(items[c][r].item==3){
+                             //공 속도 느리게
+                             console.log(3);
+                             if(dx>0){
+                              if(dx>2)
+                              dx--;
+                             }
+                             else{
+                              if(dx<-2)
+                              dx++;
+                             }
+                             if(dy>0){
+                              if(dy>2)
+                              dy--;
+                             }
+                             else{
+                              if(dy>-2)
+                              dy++;
+                             }
+                             items[c][r].item=0;
+                          }
+                        }                    
+                      }
+                    }
+                  
+                    
+                }
+        }
+
+    }
+
+    //충돌 확인 함수
+    function collisionDetection() {
+      for(var c=0; c<brickColumnCount; c++) {
+        for(var r=0; r<brickRowCount; r++) {
+          var b = bricks[c][r];
+
+          //벽돌 충돌시 방향 변경
+          if(b.status >= 1) {
+            if(x > b.x-ballRadius&& x < b.x+brickWidth+ballRadius && y > b.y-ballRadius&& y < b.y+brickHeight+ballRadius) {
+              if(x > b.x&& x < b.x+brickWidth){
+                dy=-dy;
+              } 
+              else if( y > b.y&& y < b.y+brickHeight){
+                dx=-dx;
+              }             
+              else{
+                var A=b.x+brickWidth/2;
+                var B=b.y+brickHeight/2;
+                if(A-x<0&&dx<0){
+                  dx=-dx;
+
+                }
+                if(B-y<0&&dy<0){
+                  dy=-dy;
+                }          
+              }
+            
+            //충돌시 상하좌우 블럭 상태 변경 및 아이템배열 초기화
+              if(damage_range>0){
+                var i1=1;
+                while(r+i1<brickRowCount&&i1<damage_range+1){
+                    explosion[c][r+i1].status=1;
+                    var rightbox=bricks[c][r+i1];
+                    if(rightbox.status>=1){
+                        rightbox.status-=damage;
+                        if(rightbox.status<1){
+                            items[c][r+i1].x=rightbox.x+brickWidth/2;
+                            items[c][r+i1].y=rightbox.y;
+                            items[c][r+i1].item=rightbox.item;
+                            score++;
+                        }
+                    }
+                    i1++;
+                }
+                 var i2=1;
+                while(r-i2>=0&&i2<damage_range+1){
+                    explosion[c][r-i2].status=1;
+                    var leftbox=bricks[c][r-i2];
+                    if(leftbox.status>=1){
+                        leftbox.status-=damage;
+                        if(leftbox.status<1){
+                            items[c][r-i2].x=leftbox.x+brickWidth/2;
+                            items[c][r-i2].y=leftbox.y+brickHeight;
+                            items[c][r-i2].item=leftbox.item;
+                          score++;
+                        }
+                    }
+                    i2++;
+                }
+                 var i3=1;
+                while(c+i3<brickColumnCount&&i3<damage_range+1){
+                    explosion[c+i3][r].status=1;
+                    var bottombox=bricks[c+i3][r];
+                    if(bottombox.status>=1){
+                        bottombox.status-=damage;
+                        if(bottombox.status<1){
+                            items[c+i3][r].x=bottombox.x+brickWidth/2;
+                            items[c+i3][r].y=bottombox.y+brickHeight;
+                            items[c+i3][r].item=bottombox.item;
+                         score++;
+                        }
+                    }
+                    i3++;
+                }
+                  var i4=1;
+                while(c-i4>=0&&i4<damage_range+1){
+                    explosion[c-i4][r].status=1;
+                    var topbox=bricks[c-i4][r];
+                    if(topbox.status>=1){
+                        topbox.status-=damage;
+                        if(topbox.status<1){
+                            items[c-i4][r].x=topbox.x+brickWidth/2;
+                            items[c-i4][r].y=topbox.y+brickHeight;
+                            items[c-i4][r].item=topbox.item;
+
+                         score++;
+                        }
+                    }
+                    i4++;
+                }
+              }
+
+              b.status -= damage;
+              explosion[c][r].status=1;
+              if(b.status<1){
+                items[c][r].x=b.x+brickWidth/2;
+                items[c][r].y=b.y+brickHeight;
+                items[c][r].item=b.item;
+                score++;
+
+              }
+
+              if(score == brickRowCount*brickColumnCount) {
+                alert("YOU WIN, CONGRATS!");
+                document.location.reload();
+              }
+            }
+          }
+        }
+      }
+    }
+
+    //아이템 그리기
+    
+    function drawItems(){
+        for(var c=0; c<brickColumnCount; c++) {
+            for(var r=0; r<brickRowCount; r++) {
+            if(items[c][r].item>0){
+              ctx.drawImage(item_imgs[items[c][r].item-1],items[c][r].x-12.5, items[c][r].y-12.5,25,25);
+            }
+        }
+      }
+    }
+    //공 그리기
+   
+    function drawBall() {
+      ctx.drawImage(ball_imgs[1],x-ballRadius, y-ballRadius,ballRadius*2,ballRadius*2);
+
+    }
+    //패들그리기
+    
+   
+    function drawCharacter(){
+      ctx.drawImage(character_imgs[character],paddleX, canvas.height-paddleHeight-paddleWidth, paddleWidth, paddleWidth);
+    }
+    function drawPaddle() {
+
+      ctx.beginPath();
+      ctx.rect(paddleX, canvas.height-paddleHeight, paddleWidth, paddleHeight);
+      if(character==0){
+        ctx.fillStyle="blue";
+      }
+      if(character==1){
+       ctx.fillStyle="yellow"; 
+      }
+      if(character==2){
+        ctx.fillStyle="red";
+      }
+      //ctx.fillStyle = "#0095DD";
+      ctx.fill();
+      ctx.closePath();
+    }
+    
+  //  const brick=new Image();
+    //벽돌 그리기
+    function drawBricks() {
+      for(var c=0; c<brickColumnCount; c++) {
+        for(var r=0; r<brickRowCount; r++) {
+          if(bricks[c][r].status >= 1&&!(explosion[c][r].status>0)) {
+            var brickX = (r*(brickWidth+brickPadding))+brickOffsetLeft;
+            var brickY = (c*(brickHeight+brickPadding))+brickOffsetTop;
+            bricks[c][r].x = brickX;
+            bricks[c][r].y = brickY;
+      
+            ctx.drawImage(brick_imgs[level][(bricks[c][r].status)-1],brickX, brickY, brickWidth,brickHeight);
+          
+          }
+        }
+      }
+    }
+    //점수표기
+    function drawScore() {
+      ctx.font = "16px Arial";
+      ctx.fillStyle = "#0095DD";
+      ctx.fillText("Score: "+score, 8, 300);
+    }
+    //생명표기
+    function drawLives() {
+      ctx.font = "16px Arial";
+      ctx.fillStyle = "#0095DD";
+      ctx.fillText("Lives: "+lives, canvas.width-65, 300);
+    }
+
+    //물풍선 폭발 그리기
+    
+    function drawexplosion() {
+      for(var c=0; c<brickColumnCount; c++) {
+        for(var r=0; r<brickRowCount; r++) {
+          if(explosion[c][r].status >0) {
+            var brickX = (r*(brickWidth+brickPadding))+brickOffsetLeft;
+            var brickY = (c*(brickHeight+brickPadding))+brickOffsetTop;
+            explosion[c][r].x = brickX;
+            explosion[c][r].y = brickY;
+
+           
+            if(explosion[c][r].status>0){
+                ctx.fillStyle = "#AAF0D1";
+                ctx.drawImage(explosion_img,brickX, brickY, brickWidth, brickHeight)
+            }
+       
+          }
+        }
+      }
+    }
+   
+   
+    //그리기 
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      background.src=background_imgs[level];
+      ctx.drawImage(background,0,0, canvas.width,canvas.height);
+      
+      drawBricks();
+      drawBall();
+      drawCharacter();
+      drawPaddle();
+      drawScore();
+      drawLives();
+      drawItems();
+      drawexplosion();
+      collisionDetection();
+      Item_collisionDetection();
+      
+
+      //아이템 떨어트리기
+      for(var c=0; c<brickColumnCount; c++) {
+            for(var r=0; r<brickRowCount; r++) {
+                if(items[c][r].item>0){
+                    if(items[c][r].y+item_dy< canvas.height){
+                        items[c][r].y+=item_dy;
+                    }
+                    if(items[c][r].y>canvas.height-paddleHeight){
+                    items[c][r].item=0;
+                    
+                    }
+                }
+                
+             }
+        }
+
+        //물풍선 터지는 효과를 위해 0.2씩 감소하다가 5번감소해 0이되면 폭발 종료
+        for(var c=0; c<brickColumnCount; c++) {
+            for(var r=0; r<brickRowCount; r++) {
+               if(explosion[c][r].status>0){
+                explosion[c][r].status-=0.2;
+               }
+             }
+        }
+
+        // 벽 충돌시 공 방향변경
+      if(x + dx > canvas.width-ballRadius || x + dx < ballRadius) {
+        dx = -dx;
+      }
+      if(y + dy < ballRadius) {
+        dy = -dy;
+      }
+      else if(y + dy > canvas.height-ballRadius-paddleHeight) {
+        if(x > paddleX && x < paddleX + paddleWidth) {
+          dy = -dy;
+        }
+        else {
+          lives--;
+          if(!lives) {
+            alert("GAME OVER");
+            document.location.reload();
+          }
+          else {
+            x = canvas.width/2;
+            y = canvas.height-30;
+            dx = 3;
+            dy = -3;
+            paddleX = (canvas.width-paddleWidth)/2;
+          }
+        }
+      }
+
+      //방향키 따른 패들 움직임
+      if(rightPressed && paddleX < canvas.width-paddleWidth) {
+        paddleX += 7;
+      }
+      else if(leftPressed && paddleX > 0) {
+        paddleX -= 7;
+      }
+
+      //공 움직임
+      x += dx;
+      y += dy;
+      requestAnimationFrame(draw); //매끄럽게 게임
+    }
+    //var interval=setInterval(draw,10);
+     draw(); //매끄럽게 게임
+</script>
+
+</body>
+</html>
